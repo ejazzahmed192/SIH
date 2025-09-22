@@ -4,7 +4,11 @@ import { TimetableProvider, useTimetable } from './contexts/TimetableContext';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Courses from './components/Courses';
+import Faculty from './components/Faculty';
+import Rooms from './components/Rooms';
+import Students from './components/Students';
 import Generator from './components/Generator';
+import BatchGenerator from './components/BatchGenerator';
 import Timetables from './components/Timetables';
 import Export from './components/Export';
 
@@ -156,11 +160,12 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/courses" element={<Courses />} />
-        <Route path="/faculty" element={<div className="text-center py-12 text-gray-500">Faculty management coming soon...</div>} />
-        <Route path="/rooms" element={<div className="text-center py-12 text-gray-500">Room management coming soon...</div>} />
-        <Route path="/students" element={<div className="text-center py-12 text-gray-500">Student management coming soon...</div>} />
+        <Route path="/faculty" element={<Faculty />} />
+        <Route path="/rooms" element={<Rooms />} />
+        <Route path="/students" element={<Students />} />
         <Route path="/timetables" element={<Timetables />} />
         <Route path="/generator" element={<Generator />} />
+        <Route path="/batch-generator" element={<BatchGenerator />} />
         <Route path="/export" element={<Export />} />
         <Route path="/settings" element={<div className="text-center py-12 text-gray-500">Settings coming soon...</div>} />
       </Routes>

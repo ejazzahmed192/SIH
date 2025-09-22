@@ -10,6 +10,7 @@ import {
   FileDown,
   Brain,
   GraduationCap
+  Zap
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -27,6 +28,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Students', href: '/students', icon: GraduationCap },
     { name: 'Timetables', href: '/timetables', icon: Calendar },
     { name: 'AI Generator', href: '/generator', icon: Brain },
+    { name: 'Batch Generator', href: '/batch-generator', icon: Zap },
     { name: 'Export', href: '/export', icon: FileDown },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
