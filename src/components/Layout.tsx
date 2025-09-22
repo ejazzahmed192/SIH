@@ -9,7 +9,7 @@ import {
   Home,
   FileDown,
   Brain,
-  GraduationCap
+  GraduationCap,
   Zap
 } from 'lucide-react';
 
