@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
 import { Student } from '../types';
-import { GraduationCap, Plus, Edit, Trash2, Search, Filter, Mail, BookOpen } from 'lucide-react';
+import { GraduationCap, Plus, Edit, Trash2, Search, Filter, Mail, BookOpen, Upload } from 'lucide-react';
+import BulkStudentImport from './BulkStudentImport';
 
 export default function StudentsComponent() {
   const { state, dispatch } = useTimetable();
   const [showForm, setShowForm] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProgram, setFilterProgram] = useState('');
@@ -66,13 +68,22 @@ export default function StudentsComponent() {
           <h1 className="text-3xl font-bold text-gray-900">Student Management</h1>
           <p className="text-gray-600 mt-1">Manage student enrollments and course selections</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
-        >
-          <Plus className="h-5 w-5 mr-2" />
-          Add Student
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Upload className="h-5 w-5 mr-2" />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Add Student
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -131,6 +142,13 @@ export default function StudentsComponent() {
         />
       )}
 
+      {/* Bulk Import Modal */}
+      {showBulkImport && (
+        <BulkStudentImport
+          onClose={() => setShowBulkImport(false)}
+        />
+      )}
+
       {/* Students Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredStudents.map((student) => (
@@ -184,6 +202,30 @@ export default function StudentsComponent() {
                   <span className="text-gray-600">Status</span>
                   <span className="text-green-600 font-medium">Active</span>
                 </div>
+                
+                {student.selectedCourses.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs text-gray-500 mb-1">Enrolled Courses:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {student.selectedCourses.slice(0, 3).map((courseId) => {
+                        const course = state.courses.find(c => c.id === courseId);
+                        return course ? (
+                          <span
+                            key={courseId}
+                            className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800"
+                          >
+                            {course.code}
+                          </span>
+                        ) : null;
+                      })}
+                      {student.selectedCourses.length > 3 && (
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                          +{student.selectedCourses.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
