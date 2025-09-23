@@ -1,4 +1,5 @@
 import { Course, Faculty, Room, Student, TimeSlot, Conflict } from '../types';
+import { ORToolsTimetableGenerator, ORToolsGenerationParams } from './orToolsTimetableGenerator';
 
 export interface GenerationParams {
   courses: Course[];
@@ -15,6 +16,7 @@ export interface GenerationParams {
 }
 
 export class TimetableGenerator {
+  private orToolsGenerator: ORToolsTimetableGenerator;
   private timeSlots = [
     '09:00-10:00',
     '10:00-11:00', 
@@ -28,42 +30,36 @@ export class TimetableGenerator {
 
   private days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+  constructor() {
+    this.orToolsGenerator = new ORToolsTimetableGenerator();
+  }
+
   generateTimetable(params: GenerationParams): { timeSlots: TimeSlot[]; conflicts: Conflict[] } {
-    const { courses, faculty, rooms, students, program, semester } = params;
-    
-    // Filter courses by program and semester
-    const relevantCourses = courses.filter(
-      course => course.program === program && course.semester === semester
-    );
-
-    const generatedSlots: TimeSlot[] = [];
-    const conflicts: Conflict[] = [];
-
-    // Sort courses by priority (theory first, then practicals, then labs)
-    const prioritizedCourses = this.prioritizeCourses(relevantCourses);
-
-    for (const course of prioritizedCourses) {
-      const assignment = this.assignCourseToSlot(
-        course,
-        faculty,
-        rooms,
-        students,
-        generatedSlots,
-        params.preferences
-      );
-
-      if (assignment.success) {
-        generatedSlots.push(...assignment.slots);
-      } else {
-        conflicts.push(...assignment.conflicts);
+    // Use OR-Tools for more efficient constraint-based optimization
+    const orToolsParams: ORToolsGenerationParams = {
+      courses: params.courses,
+      faculty: params.faculty,
+      rooms: params.rooms,
+      students: params.students,
+      program: params.program,
+      semester: params.semester,
+      preferences: {
+        ...params.preferences,
+        prioritizeCore: true,
+        balanceWorkload: true
       }
-    }
+    };
 
-    // Detect additional conflicts
-    const additionalConflicts = this.detectConflicts(generatedSlots, faculty, rooms, students);
-    conflicts.push(...additionalConflicts);
+    // Use async version for OR-Tools integration
+    return this.generateTimetableAsync(orToolsParams);
+  }
 
-    return { timeSlots: generatedSlots, conflicts };
+  async generateTimetableAsync(params: ORToolsGenerationParams): Promise<{ timeSlots: TimeSlot[]; conflicts: Conflict[] }> {
+    const result = await this.orToolsGenerator.generateTimetable(params);
+    return {
+      timeSlots: result.timeSlots,
+      conflicts: result.conflicts
+    };
   }
 
   private prioritizeCourses(courses: Course[]): Course[] {

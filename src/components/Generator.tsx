@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
-import { TimetableGenerator, GenerationParams } from '../utils/timetableGenerator';
+import { ORToolsTimetableGenerator, ORToolsGenerationParams } from '../utils/orToolsTimetableGenerator';
 import { Brain, Settings, Play, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 
 export default function Generator() {
   const { state, dispatch } = useTimetable();
-  const [params, setParams] = useState<Partial<GenerationParams>>({
+  const [params, setParams] = useState<Partial<ORToolsGenerationParams>>({
     program: 'FYUP',
     semester: 1,
     preferences: {
       preferredTimeSlots: ['09:00-10:00', '10:00-11:00', '11:00-12:00'],
       avoidBackToBack: true,
       maxHoursPerDay: 6,
+      prioritizeCore: true,
+      balanceWorkload: true,
     },
   });
   const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState<{ timeSlots: any[]; conflicts: any[] } | null>(null);
+  const [result, setResult] = useState<{ timeSlots: any[]; conflicts: any[]; solutionTime: number } | null>(null);
 
   const programs = ['FYUP', 'B.Ed', 'M.Ed', 'ITEP'];
   const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -33,8 +35,8 @@ export default function Generator() {
     setGenerating(true);
     
     try {
-      const generator = new TimetableGenerator();
-      const generationParams: GenerationParams = {
+      const generator = new ORToolsTimetableGenerator();
+      const generationParams: ORToolsGenerationParams = {
         courses: state.courses,
         faculty: state.faculty,
         rooms: state.rooms,
@@ -45,13 +47,12 @@ export default function Generator() {
           preferredTimeSlots: [],
           avoidBackToBack: true,
           maxHoursPerDay: 6,
+          prioritizeCore: true,
+          balanceWorkload: true,
         },
       };
 
-      // Simulate AI processing time
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const result = generator.generateTimetable(generationParams);
+      const result = await generator.generateTimetable(generationParams);
       setResult(result);
       
       // Create new timetable
@@ -172,6 +173,42 @@ export default function Generator() {
                 <label className="flex items-center">
                   <input
                     type="checkbox"
+                    checked={params.preferences?.prioritizeCore || false}
+                    onChange={(e) => setParams({
+                      ...params,
+                      preferences: {
+                        ...params.preferences,
+                        prioritizeCore: e.target.checked,
+                      },
+                    })}
+                    className="mr-2 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Prioritize core courses</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={params.preferences?.balanceWorkload || false}
+                    onChange={(e) => setParams({
+                      ...params,
+                      preferences: {
+                        ...params.preferences,
+                        balanceWorkload: e.target.checked,
+                      },
+                    })}
+                    className="mr-2 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Balance faculty workload</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
                     checked={params.preferences?.avoidBackToBack || false}
                     onChange={(e) => setParams({
                       ...params,
@@ -264,7 +301,7 @@ export default function Generator() {
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
                   <span className="text-sm text-gray-600">
-                    Generated {result.timeSlots.length} time slots
+                    Generated {result.timeSlots.length} time slots in {result.solutionTime}ms
                   </span>
                 </div>
                 
@@ -281,6 +318,13 @@ export default function Generator() {
                     <span className="text-sm text-gray-600">No conflicts found</span>
                   </div>
                 )}
+                
+                <div className="flex items-center">
+                  <Brain className="h-5 w-5 text-blue-500 mr-2" />
+                  <span className="text-sm text-gray-600">
+                    Optimized using OR-Tools constraint solver
+                  </span>
+                </div>
               </div>
             </div>
           )}

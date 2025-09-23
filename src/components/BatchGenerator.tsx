@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
-import { AITimetableGenerator, BatchGenerationParams } from '../utils/aiTimetableGenerator';
+import { ORToolsTimetableGenerator, ORToolsBatchGenerationParams } from '../utils/orToolsTimetableGenerator';
 import { Brain, Settings, Play, AlertCircle, CheckCircle, Loader, Zap, Target } from 'lucide-react';
 
 export default function BatchGenerator() {
   const { state, dispatch } = useTimetable();
-  const [params, setParams] = useState<Partial<BatchGenerationParams>>({
+  const [params, setParams] = useState<Partial<ORToolsBatchGenerationParams>>({
     programs: ['FYUP'],
     semesters: [1],
     preferences: {
@@ -37,8 +37,8 @@ export default function BatchGenerator() {
     setProgress(0);
     
     try {
-      const generator = new AITimetableGenerator();
-      const generationParams: BatchGenerationParams = {
+      const generator = new ORToolsTimetableGenerator();
+      const generationParams: ORToolsBatchGenerationParams = {
         programs: params.programs,
         semesters: params.semesters,
         courses: state.courses,
@@ -372,6 +372,9 @@ export default function BatchGenerator() {
                       <div className="flex items-center space-x-2">
                         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                           Score: {result.score}
+                        </span>
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          {result.solutionTime}ms
                         </span>
                         {result.conflicts.length === 0 ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />

@@ -1,4 +1,5 @@
 import { Course, Faculty, Room, Student, TimeSlot, Conflict } from '../types';
+import { ORToolsTimetableGenerator, ORToolsBatchGenerationParams } from './orToolsTimetableGenerator';
 
 export interface BatchGenerationParams {
   programs: string[];
@@ -28,6 +29,7 @@ export interface GeneratedTimetable {
 }
 
 export class AITimetableGenerator {
+  private orToolsGenerator: ORToolsTimetableGenerator;
   private timeSlots = [
     '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00',
     '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00'
@@ -35,25 +37,23 @@ export class AITimetableGenerator {
 
   private days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  async generateBatchTimetables(params: BatchGenerationParams): Promise<GeneratedTimetable[]> {
-    const results: GeneratedTimetable[] = [];
-    
-    // Generate timetables for each program-semester combination
-    for (const program of params.programs) {
-      for (const semester of params.semesters) {
-        const timetable = await this.generateSingleTimetable(
-          program,
-          semester,
-          params
-        );
-        if (timetable) {
-          results.push(timetable);
-        }
-      }
-    }
+  constructor() {
+    this.orToolsGenerator = new ORToolsTimetableGenerator();
+  }
 
-    // Apply AI optimization across all timetables
-    return this.optimizeGlobalSchedule(results, params);
+  async generateBatchTimetables(params: BatchGenerationParams): Promise<GeneratedTimetable[]> {
+    // Use OR-Tools for more efficient optimization
+    const orToolsParams: ORToolsBatchGenerationParams = {
+      programs: params.programs,
+      semesters: params.semesters,
+      courses: params.courses,
+      faculty: params.faculty,
+      rooms: params.rooms,
+      students: params.students,
+      preferences: params.preferences
+    };
+
+    return this.orToolsGenerator.generateBatchTimetables(orToolsParams);
   }
 
   private async generateSingleTimetable(
