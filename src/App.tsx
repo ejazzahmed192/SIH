@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { TimetableProvider, useTimetable } from './contexts/TimetableContext';
 import Layout from './components/Layout';
+import HomePage from './components/HomePage';
 import Dashboard from './components/Dashboard';
 import Courses from './components/Courses';
 import Faculty from './components/Faculty';
@@ -11,6 +13,7 @@ import Generator from './components/Generator';
 import BatchGenerator from './components/BatchGenerator';
 import Timetables from './components/Timetables';
 import Export from './components/Export';
+import Settings from './components/Settings';
 
 function AppContent() {
   const { dispatch } = useTimetable();
@@ -156,30 +159,31 @@ function AppContent() {
   }, [dispatch]);
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/courses" element={<Courses />} />
-        <Route path="/faculty" element={<Faculty />} />
-        <Route path="/rooms" element={<Rooms />} />
-        <Route path="/students" element={<Students />} />
-        <Route path="/timetables" element={<Timetables />} />
-        <Route path="/generator" element={<Generator />} />
-        <Route path="/batch-generator" element={<BatchGenerator />} />
-        <Route path="/export" element={<Export />} />
-        <Route path="/settings" element={<div className="text-center py-12 text-gray-500">Settings coming soon...</div>} />
-      </Routes>
-    </Layout>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+      <Route path="/courses" element={<Layout><Courses /></Layout>} />
+      <Route path="/faculty" element={<Layout><Faculty /></Layout>} />
+      <Route path="/rooms" element={<Layout><Rooms /></Layout>} />
+      <Route path="/students" element={<Layout><Students /></Layout>} />
+      <Route path="/timetables" element={<Layout><Timetables /></Layout>} />
+      <Route path="/generator" element={<Layout><Generator /></Layout>} />
+      <Route path="/batch-generator" element={<Layout><BatchGenerator /></Layout>} />
+      <Route path="/export" element={<Layout><Export /></Layout>} />
+      <Route path="/settings" element={<Layout><Settings /></Layout>} />
+    </Routes>
   );
 }
 
 function App() {
   return (
-    <TimetableProvider>
-      <Router>
-        <AppContent />
-      </Router>
-    </TimetableProvider>
+    <ThemeProvider>
+      <TimetableProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </TimetableProvider>
+    </ThemeProvider>
   );
 }
 
