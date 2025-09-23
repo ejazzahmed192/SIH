@@ -45,7 +45,7 @@ export default function Layout({ children }: LayoutProps) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center">
             <Calendar className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            <h1 className="ml-3 text-xl font-bold text-gray-900 dark:text-white">TimetableAI</h1>
+            <h1 className="ml-3 text-xl font-bold text-gray-900 dark:text-white">TimetableX</h1>
           </div>
           <Link
             to="/"
