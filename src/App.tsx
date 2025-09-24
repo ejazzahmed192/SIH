@@ -11,6 +11,7 @@ import Rooms from './components/Rooms';
 import Students from './components/Students';
 import Generator from './components/Generator';
 import BatchGenerator from './components/BatchGenerator';
+import RoomWiseTimetable from './components/RoomWiseTimetable';
 import Timetables from './components/Timetables';
 import Export from './components/Export';
 import Settings from './components/Settings';
@@ -169,6 +170,7 @@ function AppContent() {
       <Route path="/timetables" element={<Layout><Timetables /></Layout>} />
       <Route path="/generator" element={<Layout><Generator /></Layout>} />
       <Route path="/batch-generator" element={<Layout><BatchGenerator /></Layout>} />
+      <Route path="/room-wise" element={<Layout><RoomWiseTimetable /></Layout>} />
       <Route path="/export" element={<Layout><Export /></Layout>} />
       <Route path="/settings" element={<Layout><Settings /></Layout>} />
     </Routes>

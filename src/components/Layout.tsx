@@ -32,6 +32,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Timetables', href: '/timetables', icon: Calendar },
     { name: 'AI Generator', href: '/generator', icon: Brain },
     { name: 'Batch Generator', href: '/batch-generator', icon: Zap },
+    { name: 'Room-wise View', href: '/room-wise', icon: MapPin },
     { name: 'Export', href: '/export', icon: FileDown },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
 import { Faculty } from '../types';
-import { Users, Plus, Edit, Trash2, Search, Filter, Mail, Award, Clock } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, Filter, Mail, Award, Clock, Upload } from 'lucide-react';
+import BulkFacultyImport from './BulkFacultyImport';
 
 export default function FacultyComponent() {
   const { state, dispatch } = useTimetable();
   const [showForm, setShowForm] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
 
@@ -53,13 +55,22 @@ export default function FacultyComponent() {
           <h1 className="text-3xl font-bold text-gray-900">Faculty Management</h1>
           <p className="text-gray-600 mt-1">Manage faculty members and their availability</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
-        >
-          <Plus className="h-5 w-5 mr-2" />
-          Add Faculty
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Upload className="h-5 w-5 mr-2" />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Add Faculty
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -95,6 +106,12 @@ export default function FacultyComponent() {
       </div>
 
       {/* Faculty Form Modal */}
+      {showBulkImport && (
+        <BulkFacultyImport
+          onClose={() => setShowBulkImport(false)}
+        />
+      )}
+
       {showForm && (
         <FacultyForm
           faculty={editingFaculty}

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
 import { Room } from '../types';
-import { MapPin, Plus, Edit, Trash2, Search, Filter, Users, Monitor } from 'lucide-react';
+import { MapPin, Plus, Edit, Trash2, Search, Filter, Users, Monitor, Upload } from 'lucide-react';
+import BulkRoomImport from './BulkRoomImport';
 
 export default function RoomsComponent() {
   const { state, dispatch } = useTimetable();
   const [showForm, setShowForm] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
 
@@ -70,13 +72,22 @@ export default function RoomsComponent() {
           <h1 className="text-3xl font-bold text-gray-900">Room Management</h1>
           <p className="text-gray-600 mt-1">Manage rooms, labs, and facilities</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
-        >
-          <Plus className="h-5 w-5 mr-2" />
-          Add Room
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Upload className="h-5 w-5 mr-2" />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Add Room
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -112,6 +123,12 @@ export default function RoomsComponent() {
       </div>
 
       {/* Room Form Modal */}
+      {showBulkImport && (
+        <BulkRoomImport
+          onClose={() => setShowBulkImport(false)}
+        />
+      )}
+
       {showForm && (
         <RoomForm
           room={editingRoom}
