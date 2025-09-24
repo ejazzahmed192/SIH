@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../contexts/TimetableContext';
-import { Student } from '../types';
-import { Upload, Download, GraduationCap, Plus, X, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Course } from '../types';
+import { Upload, Download, BookOpen, Plus, X, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 
-interface BulkStudentImportProps {
+interface BulkCourseImportProps {
   onClose: () => void;
 }
 
-interface StudentTemplate {
+interface CourseTemplate {
+  code: string;
   name: string;
-  email: string;
+  credits: number;
+  type: 'theory' | 'practical' | 'lab' | 'project' | 'fieldwork' | 'internship' | 'teaching-practice';
   program: 'FYUP' | 'B.Ed' | 'M.Ed' | 'ITEP';
   semester: number;
-  selectedCourses: string[];
+  duration: number;
+  prerequisites: string[];
 }
 
-export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
+export default function BulkCourseImport({ onClose }: BulkCourseImportProps) {
   const { state, dispatch } = useTimetable();
   const [importMethod, setImportMethod] = useState<'csv' | 'template'>('template');
-  const [students, setStudents] = useState<StudentTemplate[]>([]);
+  const [courses, setCourses] = useState<CourseTemplate[]>([]);
   const [csvData, setCsvData] = useState('');
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<{ success: number; errors: string[] } | null>(null);
@@ -27,33 +30,34 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
   const [templateConfig, setTemplateConfig] = useState({
     program: 'FYUP' as const,
     semester: 1,
+    type: 'theory' as const,
     count: 10,
-    selectedCourses: [] as string[]
+    credits: 3,
+    duration: 3
   });
 
   const programs = ['FYUP', 'B.Ed', 'M.Ed', 'ITEP'];
+  const courseTypes = ['theory', 'practical', 'lab', 'project', 'fieldwork', 'internship', 'teaching-practice'];
   const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
 
-  // Get available courses for selected program and semester
-  const availableCourses = state.courses.filter(
-    course => course.program === templateConfig.program && course.semester === templateConfig.semester
-  );
-
   const handleTemplateGeneration = () => {
-    const newStudents: StudentTemplate[] = [];
+    const newCourses: CourseTemplate[] = [];
     
     for (let i = 1; i <= templateConfig.count; i++) {
-      const studentNumber = i.toString().padStart(3, '0');
-      newStudents.push({
-        name: `Student ${studentNumber}`,
-        email: `student${studentNumber}@${templateConfig.program.toLowerCase()}.edu`,
+      const courseNumber = i.toString().padStart(3, '0');
+      newCourses.push({
+        code: `${templateConfig.program}${templateConfig.semester}${courseNumber}`,
+        name: `${templateConfig.program} Course ${courseNumber}`,
+        credits: templateConfig.credits,
+        type: templateConfig.type,
         program: templateConfig.program,
         semester: templateConfig.semester,
-        selectedCourses: [...templateConfig.selectedCourses]
+        duration: templateConfig.duration,
+        prerequisites: []
       });
     }
     
-    setStudents(newStudents);
+    setCourses(newCourses);
   };
 
   const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,25 +77,28 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
     const lines = csvText.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
     
-    const parsedStudents: StudentTemplate[] = [];
+    const parsedCourses: CourseTemplate[] = [];
     
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim());
       
-      if (values.length >= 4) {
-        const courseIds = values[4] ? values[4].split(';').map(c => c.trim()).filter(c => c) : [];
+      if (values.length >= 7) {
+        const prerequisites = values[7] ? values[7].split(';').map(p => p.trim()) : [];
         
-        parsedStudents.push({
-          name: values[0] || `Student ${i}`,
-          email: values[1] || `student${i}@university.edu`,
-          program: (values[2] as any) || 'FYUP',
-          semester: parseInt(values[3]) || 1,
-          selectedCourses: courseIds
+        parsedCourses.push({
+          code: values[0] || `COURSE${i}`,
+          name: values[1] || `Course ${i}`,
+          credits: parseInt(values[2]) || 3,
+          type: (values[3] as any) || 'theory',
+          program: (values[4] as any) || 'FYUP',
+          semester: parseInt(values[5]) || 1,
+          duration: parseInt(values[6]) || 3,
+          prerequisites: prerequisites
         });
       }
     }
     
-    setStudents(parsedStudents);
+    setCourses(parsedCourses);
   };
 
   const handleBulkImport = async () => {
@@ -100,46 +107,37 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
     let successCount = 0;
 
     try {
-      for (const studentData of students) {
+      for (const courseData of courses) {
         try {
-          // Validate student data
-          if (!studentData.name || !studentData.email) {
-            errors.push(`Invalid data for student: ${studentData.name || 'Unknown'}`);
+          // Validate course data
+          if (!courseData.code || !courseData.name) {
+            errors.push(`Invalid data for course: ${courseData.code || 'Unknown'}`);
             continue;
           }
 
-          // Check if email already exists
-          const existingStudent = state.students.find(s => s.email === studentData.email);
-          if (existingStudent) {
-            errors.push(`Student with email ${studentData.email} already exists`);
+          // Check if course already exists
+          const existingCourse = state.courses.find(c => c.code === courseData.code);
+          if (existingCourse) {
+            errors.push(`Course with code ${courseData.code} already exists`);
             continue;
           }
 
-          // Validate selected courses exist
-          const validCourses = studentData.selectedCourses.filter(courseId => 
-            state.courses.some(c => c.id === courseId)
-          );
-
-          if (validCourses.length !== studentData.selectedCourses.length) {
-            const invalidCourses = studentData.selectedCourses.filter(courseId => 
-              !state.courses.some(c => c.id === courseId)
-            );
-            errors.push(`Student ${studentData.name}: Invalid course IDs: ${invalidCourses.join(', ')}`);
-          }
-
-          const newStudent: Student = {
-            id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: studentData.name,
-            email: studentData.email,
-            program: studentData.program,
-            semester: studentData.semester,
-            selectedCourses: validCourses
+          const newCourse: Course = {
+            id: `course-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            code: courseData.code,
+            name: courseData.name,
+            credits: courseData.credits,
+            type: courseData.type,
+            program: courseData.program,
+            semester: courseData.semester,
+            duration: courseData.duration,
+            prerequisites: courseData.prerequisites
           };
 
-          dispatch({ type: 'ADD_STUDENT', payload: newStudent });
+          dispatch({ type: 'ADD_COURSE', payload: newCourse });
           successCount++;
         } catch (error) {
-          errors.push(`Error adding student ${studentData.name}: ${error}`);
+          errors.push(`Error adding course ${courseData.code}: ${error}`);
         }
       }
 
@@ -152,10 +150,11 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
   };
 
   const downloadCsvTemplate = () => {
-    const headers = ['Name', 'Email', 'Program', 'Semester', 'Course IDs (semicolon separated)'];
+    const headers = ['Code', 'Name', 'Credits', 'Type', 'Program', 'Semester', 'Duration', 'Prerequisites (semicolon separated)'];
     const sampleData = [
-      'John Doe,john.doe@fyup.edu,FYUP,1,course-1;course-2',
-      'Jane Smith,jane.smith@bed.edu,B.Ed,2,course-3;course-4'
+      'CS101,Introduction to Computer Science,4,theory,FYUP,1,3,',
+      'CS102,Programming Lab,2,lab,FYUP,1,2,CS101',
+      'ED201,Educational Psychology,3,theory,B.Ed,2,3,'
     ];
     
     const csvContent = [headers.join(','), ...sampleData].join('\n');
@@ -163,36 +162,19 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'student_import_template.csv';
+    a.download = 'course_import_template.csv';
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
-  const updateStudent = (index: number, field: keyof StudentTemplate, value: any) => {
-    const updatedStudents = [...students];
-    updatedStudents[index] = { ...updatedStudents[index], [field]: value };
-    setStudents(updatedStudents);
+  const updateCourse = (index: number, field: keyof CourseTemplate, value: any) => {
+    const updatedCourses = [...courses];
+    updatedCourses[index] = { ...updatedCourses[index], [field]: value };
+    setCourses(updatedCourses);
   };
 
-  const removeStudent = (index: number) => {
-    setStudents(students.filter((_, i) => i !== index));
-  };
-
-  const toggleCourse = (courseId: string) => {
-    setTemplateConfig(prev => ({
-      ...prev,
-      selectedCourses: prev.selectedCourses.includes(courseId)
-        ? prev.selectedCourses.filter(id => id !== courseId)
-        : [...prev.selectedCourses, courseId]
-    }));
-  };
-
-  const handleProgramOrSemesterChange = (field: 'program' | 'semester', value: any) => {
-    setTemplateConfig(prev => ({
-      ...prev,
-      [field]: value,
-      selectedCourses: [] // Reset selected courses when program/semester changes
-    }));
+  const removeCourse = (index: number) => {
+    setCourses(courses.filter((_, i) => i !== index));
   };
 
   return (
@@ -201,8 +183,8 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <GraduationCap className="h-6 w-6 text-blue-600 mr-3" />
-              <h2 className="text-xl font-semibold text-gray-900">Bulk Student Import</h2>
+              <BookOpen className="h-6 w-6 text-blue-600 mr-3" />
+              <h2 className="text-xl font-semibold text-gray-900">Bulk Course Import</h2>
             </div>
             <button
               onClick={onClose}
@@ -231,7 +213,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                 </div>
                 <div className="text-center">
                   <div className="font-medium text-gray-900">Template Generator</div>
-                  <div className="text-sm text-gray-500">Generate students with predefined course selections</div>
+                  <div className="text-sm text-gray-500">Generate courses with predefined configurations</div>
                 </div>
               </button>
 
@@ -248,7 +230,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                 </div>
                 <div className="text-center">
                   <div className="font-medium text-gray-900">CSV Upload</div>
-                  <div className="text-sm text-gray-500">Upload student data from CSV file</div>
+                  <div className="text-sm text-gray-500">Upload course data from CSV file</div>
                 </div>
               </button>
             </div>
@@ -265,7 +247,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
                     <select
                       value={templateConfig.program}
-                      onChange={(e) => handleProgramOrSemesterChange('program', e.target.value as any)}
+                      onChange={(e) => setTemplateConfig(prev => ({ ...prev, program: e.target.value as any }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       {programs.map(program => (
@@ -278,7 +260,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
                     <select
                       value={templateConfig.semester}
-                      onChange={(e) => handleProgramOrSemesterChange('semester', parseInt(e.target.value))}
+                      onChange={(e) => setTemplateConfig(prev => ({ ...prev, semester: parseInt(e.target.value) }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       {semesters.map(semester => (
@@ -288,13 +270,54 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Student Count</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Course Type</label>
+                    <select
+                      value={templateConfig.type}
+                      onChange={(e) => setTemplateConfig(prev => ({ ...prev, type: e.target.value as any }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      {courseTypes.map(type => (
+                        <option key={type} value={type} className="capitalize">
+                          {type.replace('-', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Course Count</label>
                     <input
                       type="number"
                       min="1"
-                      max="100"
+                      max="50"
                       value={templateConfig.count}
                       onChange={(e) => setTemplateConfig(prev => ({ ...prev, count: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Credits</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="6"
+                      value={templateConfig.credits}
+                      onChange={(e) => setTemplateConfig(prev => ({ ...prev, credits: parseInt(e.target.value) || 3 }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration (hours)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="8"
+                      value={templateConfig.duration}
+                      onChange={(e) => setTemplateConfig(prev => ({ ...prev, duration: parseInt(e.target.value) || 3 }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -307,50 +330,6 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                       Generate Template
                     </button>
                   </div>
-                </div>
-
-                {/* Course Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Course Selection ({templateConfig.selectedCourses.length} selected)
-                  </label>
-                  {availableCourses.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">
-                      No courses available for {templateConfig.program} Semester {templateConfig.semester}
-                    </p>
-                  ) : (
-                    <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md">
-                      {availableCourses.map((course) => (
-                        <label
-                          key={course.id}
-                          className="flex items-center p-3 hover:bg-gray-50 border-b border-gray-200 last:border-b-0 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={templateConfig.selectedCourses.includes(course.id)}
-                            onChange={() => toggleCourse(course.id)}
-                            className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 rounded"
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <span className="text-sm font-medium text-gray-900">{course.code}</span>
-                                <span className="ml-2 text-sm text-gray-600">{course.name}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
-                                  {course.credits} credits
-                                </span>
-                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded capitalize">
-                                  {course.type}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -385,22 +364,22 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                     />
                   </label>
                   <p className="text-sm text-gray-500 mt-1">
-                    CSV format: Name, Email, Program, Semester, Course IDs
+                    CSV format: Code, Name, Credits, Type, Program, Semester, Duration, Prerequisites
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Student Preview */}
-          {students.length > 0 && (
+          {/* Course Preview */}
+          {courses.length > 0 && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Student Preview ({students.length} students)
+                  Course Preview ({courses.length} courses)
                 </h3>
                 <button
-                  onClick={() => setStudents([])}
+                  onClick={() => setCourses([])}
                   className="text-sm text-red-600 hover:text-red-700"
                 >
                   Clear All
@@ -411,37 +390,39 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Program</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Semester</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Courses</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credits</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {students.map((student, index) => (
+                    {courses.map((course, index) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <input
                             type="text"
-                            value={student.name}
-                            onChange={(e) => updateStudent(index, 'name', e.target.value)}
+                            value={course.code}
+                            onChange={(e) => updateCourse(index, 'code', e.target.value)}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
                         </td>
                         <td className="px-4 py-3">
                           <input
-                            type="email"
-                            value={student.email}
-                            onChange={(e) => updateStudent(index, 'email', e.target.value)}
+                            type="text"
+                            value={course.name}
+                            onChange={(e) => updateCourse(index, 'name', e.target.value)}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
                         </td>
                         <td className="px-4 py-3">
                           <select
-                            value={student.program}
-                            onChange={(e) => updateStudent(index, 'program', e.target.value)}
+                            value={course.program}
+                            onChange={(e) => updateCourse(index, 'program', e.target.value)}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           >
                             {programs.map(program => (
@@ -451,8 +432,8 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                         </td>
                         <td className="px-4 py-3">
                           <select
-                            value={student.semester}
-                            onChange={(e) => updateStudent(index, 'semester', parseInt(e.target.value))}
+                            value={course.semester}
+                            onChange={(e) => updateCourse(index, 'semester', parseInt(e.target.value))}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           >
                             {semesters.map(semester => (
@@ -461,13 +442,41 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                           </select>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-gray-600">
-                            {student.selectedCourses.length} courses
-                          </span>
+                          <select
+                            value={course.type}
+                            onChange={(e) => updateCourse(index, 'type', e.target.value)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            {courseTypes.map(type => (
+                              <option key={type} value={type} className="capitalize">
+                                {type.replace('-', ' ')}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max="6"
+                            value={course.credits}
+                            onChange={(e) => updateCourse(index, 'credits', parseInt(e.target.value))}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max="8"
+                            value={course.duration}
+                            onChange={(e) => updateCourse(index, 'duration', parseInt(e.target.value))}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => removeStudent(index)}
+                            onClick={() => removeCourse(index)}
                             className="text-red-600 hover:text-red-700"
                           >
                             <X className="h-4 w-4" />
@@ -496,7 +505,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
                   </span>
                 </div>
                 <p className={`text-sm ${results.errors.length === 0 ? 'text-green-700' : 'text-yellow-700'}`}>
-                  Successfully imported {results.success} students
+                  Successfully imported {results.success} courses
                 </p>
                 {results.errors.length > 0 && (
                   <div className="mt-2">
@@ -522,7 +531,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
             </button>
             <button
               onClick={handleBulkImport}
-              disabled={students.length === 0 || importing}
+              disabled={courses.length === 0 || importing}
               className="flex items-center px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {importing ? (
@@ -533,7 +542,7 @@ export default function BulkStudentImport({ onClose }: BulkStudentImportProps) {
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Import {students.length} Students
+                  Import {courses.length} Courses
                 </>
               )}
             </button>
