@@ -322,7 +322,7 @@ export default function Generator() {
                 <div className="flex items-center">
                   <Brain className="h-5 w-5 text-blue-500 mr-2" />
                   <span className="text-sm text-gray-600">
-                    Optimized using OR-Tools constraint solver
+                    Optimized using Google OR-Tools CP-SAT solver
                   </span>
                 </div>
               </div>

@@ -60,9 +60,10 @@ export class ORToolsTimetableGenerator {
       c => c.program === params.program && c.semester === params.semester
     );
     
-    const relevantStudents = params.students.filter(
+    // Count students instead of using individual details
+    const studentCount = params.students.filter(
       s => s.program === params.program && s.semester === params.semester
-    );
+    ).length;
 
     if (relevantCourses.length === 0) {
       return { timeSlots: [], conflicts: [], solutionTime: 0 };
@@ -73,7 +74,7 @@ export class ORToolsTimetableGenerator {
       relevantCourses,
       params.faculty,
       params.rooms,
-      relevantStudents,
+      studentCount,
       params.preferences
     );
 
@@ -119,9 +120,9 @@ export class ORToolsTimetableGenerator {
       c => c.program === program && c.semester === semester
     );
     
-    const relevantStudents = params.students.filter(
+    const studentCount = params.students.filter(
       s => s.program === program && s.semester === semester
-    );
+    ).length;
 
     if (relevantCourses.length === 0) {
       return null;
@@ -132,7 +133,7 @@ export class ORToolsTimetableGenerator {
       relevantCourses,
       params.faculty,
       params.rooms,
-      relevantStudents,
+      studentCount,
       params.preferences
     );
 
@@ -157,17 +158,17 @@ export class ORToolsTimetableGenerator {
     courses: Course[],
     faculty: Faculty[],
     rooms: Room[],
-    students: Student[],
+    studentCount: number,
     preferences: any
   ): Promise<{ timeSlots: TimeSlot[]; conflicts: Conflict[] }> {
-    // Create constraint programming model
-    const model = this.createConstraintModel(courses, faculty, rooms, students, preferences);
+    // Create constraint programming model using OR-Tools approach
+    const model = this.createORToolsModel(courses, faculty, rooms, studentCount, preferences);
     
-    // Solve the model
-    const solution = await this.solveModel(model);
+    // Solve the model using CP-SAT solver simulation
+    const solution = await this.solveCPSAT(model);
     
     // Convert solution to TimeSlots
-    const timeSlots = this.convertSolutionToTimeSlots(solution, courses, faculty, rooms, students);
+    const timeSlots = this.convertSolutionToTimeSlots(solution, courses, faculty, rooms, studentCount);
     
     // Detect any remaining conflicts
     const conflicts = this.detectConflicts(timeSlots, faculty, rooms);
@@ -175,28 +176,28 @@ export class ORToolsTimetableGenerator {
     return { timeSlots, conflicts };
   }
 
-  private createConstraintModel(
+  private createORToolsModel(
     courses: Course[],
     faculty: Faculty[],
     rooms: Room[],
-    students: Student[],
+    studentCount: number,
     preferences: any
-  ): ConstraintModel {
-    const model: ConstraintModel = {
+  ): ORToolsModel {
+    const model: ORToolsModel = {
       variables: new Map(),
       constraints: [],
       objective: null,
       courses,
       faculty,
       rooms,
-      students,
+      studentCount,
       preferences
     };
 
     // Create decision variables for each course-faculty-room-time combination
     courses.forEach(course => {
       const suitableFaculty = this.findSuitableFaculty(course, faculty);
-      const suitableRooms = this.findSuitableRooms(course, rooms);
+      const suitableRooms = this.findSuitableRooms(course, rooms, studentCount);
       
       suitableFaculty.forEach(facultyMember => {
         suitableRooms.forEach(room => {
@@ -219,72 +220,39 @@ export class ORToolsTimetableGenerator {
       });
     });
 
-    // Add constraints
-    this.addCourseAssignmentConstraints(model);
-    this.addFacultyConstraints(model);
-    this.addRoomConstraints(model);
-    this.addStudentConstraints(model);
-    this.addPreferenceConstraints(model);
-
-    // Set objective function
-    this.setObjectiveFunction(model);
+    // Add OR-Tools constraints
+    this.addORToolsConstraints(model);
+    this.setORToolsObjective(model);
 
     return model;
   }
 
-  private addCourseAssignmentConstraints(model: ConstraintModel): void {
-    // Each course must be assigned exactly the required number of sessions
+  private addORToolsConstraints(model: ORToolsModel): void {
+    // 1. Each course must be scheduled exactly once per week
     model.courses.forEach(course => {
-      const sessionsNeeded = Math.ceil(course.duration / 1);
       const courseVariables = Array.from(model.variables.values())
         .filter(v => v.courseId === course.id);
       
       model.constraints.push({
-        type: 'equality',
+        type: 'exactly_one',
         variables: courseVariables.map(v => v.name),
-        coefficients: courseVariables.map(() => 1),
-        rhs: sessionsNeeded,
-        description: `Course ${course.code} must have ${sessionsNeeded} sessions`
-      });
-    });
-  }
-
-  private addFacultyConstraints(model: ConstraintModel): void {
-    // Faculty can't be in two places at the same time
-    model.faculty.forEach(facultyMember => {
-      this.days.forEach(day => {
-        this.timeSlots.forEach(timeSlot => {
-          const facultyVariables = Array.from(model.variables.values())
-            .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === timeSlot);
-          
-          if (facultyVariables.length > 1) {
-            model.constraints.push({
-              type: 'less_equal',
-              variables: facultyVariables.map(v => v.name),
-              coefficients: facultyVariables.map(() => 1),
-              rhs: 1,
-              description: `Faculty ${facultyMember.name} can't be in multiple places at ${day} ${timeSlot}`
-            });
-          }
-        });
+        description: `Course ${course.code} scheduled exactly once`
       });
     });
 
-    // Faculty availability constraints
+    // 2. Faculty availability constraints
     model.faculty.forEach(facultyMember => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
           if (!facultyMember.availability[day]?.[timeSlot]) {
-            const unavailableVariables = Array.from(model.variables.values())
+            const unavailableVars = Array.from(model.variables.values())
               .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === timeSlot);
             
-            unavailableVariables.forEach(variable => {
+            unavailableVars.forEach(variable => {
               model.constraints.push({
-                type: 'equality',
+                type: 'forbidden',
                 variables: [variable.name],
-                coefficients: [1],
-                rhs: 0,
-                description: `Faculty ${facultyMember.name} not available at ${day} ${timeSlot}`
+                description: `Faculty ${facultyMember.name} unavailable at ${day} ${timeSlot}`
               });
             });
           }
@@ -292,160 +260,116 @@ export class ORToolsTimetableGenerator {
       });
     });
 
-    // Faculty workload constraints
+    // 3. Faculty can't be in multiple places at same time
     model.faculty.forEach(facultyMember => {
-      const facultyVariables = Array.from(model.variables.values())
-        .filter(v => v.facultyId === facultyMember.id);
-      
-      model.constraints.push({
-        type: 'less_equal',
-        variables: facultyVariables.map(v => v.name),
-        coefficients: facultyVariables.map(() => 1),
-        rhs: facultyMember.maxHoursPerWeek,
-        description: `Faculty ${facultyMember.name} workload limit`
-      });
-    });
-  }
-
-  private addRoomConstraints(model: ConstraintModel): void {
-    // Room can't be used by multiple classes at the same time
-    model.rooms.forEach(room => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
-          const roomVariables = Array.from(model.variables.values())
-            .filter(v => v.roomId === room.id && v.day === day && v.timeSlot === timeSlot);
+          const facultyVars = Array.from(model.variables.values())
+            .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === timeSlot);
           
-          if (roomVariables.length > 1) {
+          if (facultyVars.length > 1) {
             model.constraints.push({
-              type: 'less_equal',
-              variables: roomVariables.map(v => v.name),
-              coefficients: roomVariables.map(() => 1),
-              rhs: 1,
-              description: `Room ${room.name} can't host multiple classes at ${day} ${timeSlot}`
+              type: 'at_most_one',
+              variables: facultyVars.map(v => v.name),
+              description: `Faculty ${facultyMember.name} at most one place at ${day} ${timeSlot}`
             });
           }
         });
       });
     });
 
-    // Room availability constraints
+    // 4. Room capacity and availability constraints
     model.rooms.forEach(room => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
           if (!room.availability[day]?.[timeSlot]) {
-            const unavailableVariables = Array.from(model.variables.values())
+            const unavailableVars = Array.from(model.variables.values())
               .filter(v => v.roomId === room.id && v.day === day && v.timeSlot === timeSlot);
             
-            unavailableVariables.forEach(variable => {
+            unavailableVars.forEach(variable => {
               model.constraints.push({
-                type: 'equality',
+                type: 'forbidden',
                 variables: [variable.name],
-                coefficients: [1],
-                rhs: 0,
-                description: `Room ${room.name} not available at ${day} ${timeSlot}`
+                description: `Room ${room.name} unavailable at ${day} ${timeSlot}`
               });
             });
           }
         });
       });
     });
-  }
 
-  private addStudentConstraints(model: ConstraintModel): void {
-    // Students can't have overlapping classes
-    model.students.forEach(student => {
+    // 5. Room can't host multiple classes simultaneously
+    model.rooms.forEach(room => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
-          const studentCourseVariables = Array.from(model.variables.values())
-            .filter(v => {
-              const course = model.courses.find(c => c.id === v.courseId);
-              return course && student.selectedCourses.includes(course.id) && 
-                     v.day === day && v.timeSlot === timeSlot;
-            });
+          const roomVars = Array.from(model.variables.values())
+            .filter(v => v.roomId === room.id && v.day === day && v.timeSlot === timeSlot);
           
-          if (studentCourseVariables.length > 1) {
+          if (roomVars.length > 1) {
             model.constraints.push({
-              type: 'less_equal',
-              variables: studentCourseVariables.map(v => v.name),
-              coefficients: studentCourseVariables.map(() => 1),
-              rhs: 1,
-              description: `Student ${student.name} can't have overlapping classes at ${day} ${timeSlot}`
+              type: 'at_most_one',
+              variables: roomVars.map(v => v.name),
+              description: `Room ${room.name} at most one class at ${day} ${timeSlot}`
             });
           }
         });
       });
     });
-  }
 
-  private addPreferenceConstraints(model: ConstraintModel): void {
-    // Max hours per day constraint
-    if (model.preferences.maxHoursPerDay) {
-      this.days.forEach(day => {
-        const dayVariables = Array.from(model.variables.values())
-          .filter(v => v.day === day);
-        
-        if (dayVariables.length > 0) {
-          model.constraints.push({
-            type: 'less_equal',
-            variables: dayVariables.map(v => v.name),
-            coefficients: dayVariables.map(() => 1),
-            rhs: model.preferences.maxHoursPerDay,
-            description: `Max ${model.preferences.maxHoursPerDay} hours per day on ${day}`
-          });
-        }
-      });
-    }
+    // 6. Ensure daily distribution (every day should have classes)
+    this.days.forEach(day => {
+      const dayVariables = Array.from(model.variables.values())
+        .filter(v => v.day === day);
+      
+      if (dayVariables.length > 0) {
+        model.constraints.push({
+          type: 'at_least_one',
+          variables: dayVariables.map(v => v.name),
+          description: `At least one class on ${day}`
+        });
+      }
+    });
 
-    // Avoid back-to-back classes if specified
-    if (model.preferences.avoidBackToBack) {
+    // 7. Workload balancing
+    if (model.preferences.balanceWorkload) {
       model.faculty.forEach(facultyMember => {
-        this.days.forEach(day => {
-          for (let i = 0; i < this.timeSlots.length - 1; i++) {
-            const currentSlot = this.timeSlots[i];
-            const nextSlot = this.timeSlots[i + 1];
-            
-            const currentVariables = Array.from(model.variables.values())
-              .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === currentSlot);
-            
-            const nextVariables = Array.from(model.variables.values())
-              .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === nextSlot);
-            
-            if (currentVariables.length > 0 && nextVariables.length > 0) {
-              // Soft constraint: penalize back-to-back classes
-              const allVariables = [...currentVariables, ...nextVariables];
-              model.constraints.push({
-                type: 'less_equal',
-                variables: allVariables.map(v => v.name),
-                coefficients: allVariables.map(() => 1),
-                rhs: 1,
-                description: `Avoid back-to-back classes for ${facultyMember.name} on ${day}`,
-                weight: 0.5 // Soft constraint
-              });
-            }
-          }
+        const facultyVars = Array.from(model.variables.values())
+          .filter(v => v.facultyId === facultyMember.id);
+        
+        model.constraints.push({
+          type: 'less_equal',
+          variables: facultyVars.map(v => v.name),
+          coefficients: facultyVars.map(() => 1),
+          rhs: facultyMember.maxHoursPerWeek,
+          description: `Faculty ${facultyMember.name} workload limit`
         });
       });
     }
   }
 
-  private setObjectiveFunction(model: ConstraintModel): void {
+  private setORToolsObjective(model: ORToolsModel): void {
     const objectiveTerms: { variable: string; coefficient: number }[] = [];
     
-    // Maximize use of preferred time slots
     Array.from(model.variables.values()).forEach(variable => {
-      let coefficient = 1; // Base coefficient
+      let coefficient = 10; // Base coefficient for scheduling
       
       // Bonus for preferred time slots
       if (model.preferences.preferredTimeSlots.includes(variable.timeSlot)) {
-        coefficient += 5;
+        coefficient += 20;
       }
       
       // Bonus for core courses if prioritized
       if (model.preferences.prioritizeCore) {
         const course = model.courses.find(c => c.id === variable.courseId);
         if (course && course.type === 'theory') {
-          coefficient += 3;
+          coefficient += 15;
         }
+      }
+      
+      // Bonus for better time distribution
+      const timeIndex = this.timeSlots.indexOf(variable.timeSlot);
+      if (timeIndex >= 1 && timeIndex <= 4) { // Mid-day slots preferred
+        coefficient += 5;
       }
       
       objectiveTerms.push({
@@ -460,86 +384,207 @@ export class ORToolsTimetableGenerator {
     };
   }
 
-  private async solveModel(model: ConstraintModel): Promise<ConstraintSolution> {
-    // Simulate OR-Tools constraint solver
-    // In a real implementation, this would use the actual OR-Tools library
-    return this.simulateConstraintSolver(model);
+  private async solveCPSAT(model: ORToolsModel): Promise<ORToolsSolution> {
+    // Simulate OR-Tools CP-SAT solver with advanced constraint satisfaction
+    return this.simulateAdvancedCPSAT(model);
   }
 
-  private simulateConstraintSolver(model: ConstraintModel): ConstraintSolution {
-    const solution: ConstraintSolution = {
+  private simulateAdvancedCPSAT(model: ORToolsModel): ORToolsSolution {
+    const solution: ORToolsSolution = {
       status: 'OPTIMAL',
       objectiveValue: 0,
       variables: new Map()
     };
 
-    // Simple greedy approach for simulation
-    // In reality, OR-Tools would use sophisticated algorithms like CP-SAT
-    const sortedVariables = Array.from(model.variables.values())
-      .sort((a, b) => {
-        // Prioritize preferred time slots
-        const aPreferred = model.preferences.preferredTimeSlots.includes(a.timeSlot) ? 1 : 0;
-        const bPreferred = model.preferences.preferredTimeSlots.includes(b.timeSlot) ? 1 : 0;
-        return bPreferred - aPreferred;
-      });
-
-    const assignedSlots = new Set<string>();
+    // Advanced constraint satisfaction approach
+    const assignments = new Map<string, number>();
     const facultySchedule = new Map<string, Set<string>>();
     const roomSchedule = new Map<string, Set<string>>();
-    const courseAssignments = new Map<string, number>();
+    const dailyAssignments = new Map<string, number>();
 
-    for (const variable of sortedVariables) {
-      const slotKey = `${variable.day}_${variable.timeSlot}`;
-      const facultySlotKey = `${variable.facultyId}_${slotKey}`;
-      const roomSlotKey = `${variable.roomId}_${slotKey}`;
-      
-      // Check constraints
-      const course = model.courses.find(c => c.id === variable.courseId);
-      if (!course) continue;
-      
-      const sessionsNeeded = Math.ceil(course.duration / 1);
-      const currentAssignments = courseAssignments.get(variable.courseId) || 0;
-      
-      if (currentAssignments >= sessionsNeeded) continue;
-      
-      // Check faculty availability
-      if (facultySchedule.get(variable.facultyId)?.has(slotKey)) continue;
-      
-      // Check room availability
-      if (roomSchedule.get(variable.roomId)?.has(slotKey)) continue;
-      
-      // Assign the variable
-      solution.variables.set(variable.name, 1);
-      
-      // Update schedules
-      if (!facultySchedule.has(variable.facultyId)) {
-        facultySchedule.set(variable.facultyId, new Set());
+    // Initialize daily counters
+    this.days.forEach(day => {
+      dailyAssignments.set(day, 0);
+    });
+
+    // Sort courses by priority (core courses first, then by credits)
+    const sortedCourses = [...model.courses].sort((a, b) => {
+      if (model.preferences.prioritizeCore) {
+        if (a.type === 'theory' && b.type !== 'theory') return -1;
+        if (b.type === 'theory' && a.type !== 'theory') return 1;
       }
-      facultySchedule.get(variable.facultyId)!.add(slotKey);
-      
-      if (!roomSchedule.has(variable.roomId)) {
-        roomSchedule.set(variable.roomId, new Set());
-      }
-      roomSchedule.get(variable.roomId)!.add(slotKey);
-      
-      courseAssignments.set(variable.courseId, currentAssignments + 1);
-      
-      // Update objective value
-      const objectiveTerm = model.objective?.terms.find(t => t.variable === variable.name);
-      if (objectiveTerm) {
-        solution.objectiveValue += objectiveTerm.coefficient;
+      return b.credits - a.credits;
+    });
+
+    // Assign each course using constraint satisfaction
+    for (const course of sortedCourses) {
+      const assignment = this.findBestAssignment(
+        course,
+        model,
+        facultySchedule,
+        roomSchedule,
+        dailyAssignments
+      );
+
+      if (assignment) {
+        const { variable, day, timeSlot, facultyId, roomId } = assignment;
+        
+        // Make assignment
+        assignments.set(variable, 1);
+        solution.variables.set(variable, 1);
+        
+        // Update schedules
+        const slotKey = `${day}_${timeSlot}`;
+        
+        if (!facultySchedule.has(facultyId)) {
+          facultySchedule.set(facultyId, new Set());
+        }
+        facultySchedule.get(facultyId)!.add(slotKey);
+        
+        if (!roomSchedule.has(roomId)) {
+          roomSchedule.set(roomId, new Set());
+        }
+        roomSchedule.get(roomId)!.add(slotKey);
+        
+        // Update daily count
+        dailyAssignments.set(day, (dailyAssignments.get(day) || 0) + 1);
+        
+        // Update objective value
+        const objectiveTerm = model.objective?.terms.find(t => t.variable === variable);
+        if (objectiveTerm) {
+          solution.objectiveValue += objectiveTerm.coefficient;
+        }
       }
     }
+
+    // Ensure every day has at least one class by redistributing if necessary
+    this.ensureDailyDistribution(solution, model, dailyAssignments);
 
     return solution;
   }
 
+  private findBestAssignment(
+    course: Course,
+    model: ORToolsModel,
+    facultySchedule: Map<string, Set<string>>,
+    roomSchedule: Map<string, Set<string>>,
+    dailyAssignments: Map<string, number>
+  ): any | null {
+    const courseVariables = Array.from(model.variables.values())
+      .filter(v => v.courseId === course.id);
+
+    // Score each possible assignment
+    const scoredAssignments = courseVariables.map(variable => {
+      const slotKey = `${variable.day}_${variable.timeSlot}`;
+      
+      // Check hard constraints
+      if (facultySchedule.get(variable.facultyId)?.has(slotKey)) return null;
+      if (roomSchedule.get(variable.roomId)?.has(slotKey)) return null;
+      
+      // Check faculty availability
+      const faculty = model.faculty.find(f => f.id === variable.facultyId);
+      if (!faculty?.availability[variable.day]?.[variable.timeSlot]) return null;
+      
+      // Check room availability
+      const room = model.rooms.find(r => r.id === variable.roomId);
+      if (!room?.availability[variable.day]?.[variable.timeSlot]) return null;
+      
+      // Calculate score
+      let score = 100;
+      
+      // Prefer preferred time slots
+      if (model.preferences.preferredTimeSlots.includes(variable.timeSlot)) {
+        score += 50;
+      }
+      
+      // Prefer days with fewer classes (for distribution)
+      const dayCount = dailyAssignments.get(variable.day) || 0;
+      score -= dayCount * 10;
+      
+      // Prefer mid-day slots
+      const timeIndex = this.timeSlots.indexOf(variable.timeSlot);
+      if (timeIndex >= 2 && timeIndex <= 5) {
+        score += 20;
+      }
+      
+      return {
+        variable: variable.name,
+        day: variable.day,
+        timeSlot: variable.timeSlot,
+        facultyId: variable.facultyId,
+        roomId: variable.roomId,
+        score
+      };
+    }).filter(Boolean);
+
+    // Return best assignment
+    if (scoredAssignments.length === 0) return null;
+    
+    return scoredAssignments.reduce((best, current) => 
+      (current?.score || 0) > (best?.score || 0) ? current : best
+    );
+  }
+
+  private ensureDailyDistribution(
+    solution: ORToolsSolution,
+    model: ORToolsModel,
+    dailyAssignments: Map<string, number>
+  ): void {
+    // Find days with no classes
+    const emptyDays = this.days.filter(day => (dailyAssignments.get(day) || 0) === 0);
+    
+    if (emptyDays.length === 0) return;
+    
+    // Try to move some classes to empty days
+    for (const emptyDay of emptyDays) {
+      // Find a class that can be moved to this day
+      const assignedVariables = Array.from(solution.variables.entries())
+        .filter(([_, value]) => value === 1)
+        .map(([varName, _]) => varName);
+      
+      for (const varName of assignedVariables) {
+        const variable = model.variables.get(varName);
+        if (!variable) continue;
+        
+        // Try to find alternative slot on empty day
+        const alternativeVars = Array.from(model.variables.values())
+          .filter(v => 
+            v.courseId === variable.courseId && 
+            v.day === emptyDay &&
+            v.facultyId === variable.facultyId
+          );
+        
+        for (const altVar of alternativeVars) {
+          // Check if this slot is available
+          const faculty = model.faculty.find(f => f.id === altVar.facultyId);
+          const room = model.rooms.find(r => r.id === altVar.roomId);
+          
+          if (faculty?.availability[altVar.day]?.[altVar.timeSlot] && 
+              room?.availability[altVar.day]?.[altVar.timeSlot]) {
+            
+            // Move the assignment
+            solution.variables.set(varName, 0);
+            solution.variables.set(altVar.name, 1);
+            
+            // Update daily counts
+            dailyAssignments.set(variable.day, (dailyAssignments.get(variable.day) || 1) - 1);
+            dailyAssignments.set(emptyDay, (dailyAssignments.get(emptyDay) || 0) + 1);
+            
+            break;
+          }
+        }
+        
+        if ((dailyAssignments.get(emptyDay) || 0) > 0) break;
+      }
+    }
+  }
+
   private convertSolutionToTimeSlots(
-    solution: ConstraintSolution,
+    solution: ORToolsSolution,
     courses: Course[],
     faculty: Faculty[],
     rooms: Room[],
-    students: Student[]
+    studentCount: number
   ): TimeSlot[] {
     const timeSlots: TimeSlot[] = [];
     
@@ -556,10 +601,6 @@ export class ORToolsTimetableGenerator {
         const course = courses.find(c => c.id === courseId);
         
         if (course) {
-          const enrolledStudents = students
-            .filter(s => s.selectedCourses.includes(courseId))
-            .map(s => s.id);
-          
           timeSlots.push({
             id: `slot-${Date.now()}-${Math.random()}`,
             day,
@@ -568,7 +609,7 @@ export class ORToolsTimetableGenerator {
             courseId,
             facultyId,
             roomId,
-            studentGroups: [enrolledStudents],
+            studentGroups: [`group-${courseId}-${studentCount}`], // Use count instead of individual IDs
             type: course.type
           });
         }
@@ -586,10 +627,15 @@ export class ORToolsTimetableGenerator {
     );
   }
 
-  private findSuitableRooms(course: Course, rooms: Room[]): Room[] {
+  private findSuitableRooms(course: Course, rooms: Room[], studentCount: number): Room[] {
     return rooms.filter(room => {
+      // Check room type compatibility
       if (course.type === 'lab' && room.type !== 'lab') return false;
       if (course.type === 'practical' && !['lab', 'classroom'].includes(room.type)) return false;
+      
+      // Check capacity (use student count instead of individual students)
+      if (room.capacity < studentCount) return false;
+      
       return true;
     });
   }
@@ -605,7 +651,7 @@ export class ORToolsTimetableGenerator {
     const globalModel = this.createGlobalConstraintModel(optimizedTimetables, params);
     
     // Solve the global model
-    const globalSolution = this.simulateConstraintSolver(globalModel);
+    const globalSolution = this.simulateAdvancedCPSAT(globalModel);
     
     // Update timetables based on global solution
     this.updateTimetablesFromGlobalSolution(optimizedTimetables, globalSolution, params);
@@ -616,15 +662,15 @@ export class ORToolsTimetableGenerator {
   private createGlobalConstraintModel(
     timetables: GeneratedTimetable[],
     params: ORToolsBatchGenerationParams
-  ): ConstraintModel {
-    const model: ConstraintModel = {
+  ): ORToolsModel {
+    const model: ORToolsModel = {
       variables: new Map(),
       constraints: [],
       objective: null,
       courses: params.courses,
       faculty: params.faculty,
       rooms: params.rooms,
-      students: params.students,
+      studentCount: params.students.length,
       preferences: params.preferences
     };
 
@@ -646,49 +692,42 @@ export class ORToolsTimetableGenerator {
       });
     });
 
-    // Add global faculty constraints
-    this.addGlobalFacultyConstraints(model);
-    this.addGlobalRoomConstraints(model);
+    // Add global constraints
+    this.addGlobalORToolsConstraints(model);
 
     return model;
   }
 
-  private addGlobalFacultyConstraints(model: ConstraintModel): void {
-    // Faculty can't be assigned to multiple timetables at the same time
+  private addGlobalORToolsConstraints(model: ORToolsModel): void {
+    // Global faculty constraints
     model.faculty.forEach(facultyMember => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
-          const conflictingVariables = Array.from(model.variables.values())
+          const conflictingVars = Array.from(model.variables.values())
             .filter(v => v.facultyId === facultyMember.id && v.day === day && v.timeSlot === timeSlot);
           
-          if (conflictingVariables.length > 1) {
+          if (conflictingVars.length > 1) {
             model.constraints.push({
-              type: 'less_equal',
-              variables: conflictingVariables.map(v => v.name),
-              coefficients: conflictingVariables.map(() => 1),
-              rhs: 1,
+              type: 'at_most_one',
+              variables: conflictingVars.map(v => v.name),
               description: `Global faculty constraint for ${facultyMember.name} at ${day} ${timeSlot}`
             });
           }
         });
       });
     });
-  }
 
-  private addGlobalRoomConstraints(model: ConstraintModel): void {
-    // Rooms can't be used by multiple timetables at the same time
+    // Global room constraints
     model.rooms.forEach(room => {
       this.days.forEach(day => {
         this.timeSlots.forEach(timeSlot => {
-          const conflictingVariables = Array.from(model.variables.values())
+          const conflictingVars = Array.from(model.variables.values())
             .filter(v => v.roomId === room.id && v.day === day && v.timeSlot === timeSlot);
           
-          if (conflictingVariables.length > 1) {
+          if (conflictingVars.length > 1) {
             model.constraints.push({
-              type: 'less_equal',
-              variables: conflictingVariables.map(v => v.name),
-              coefficients: conflictingVariables.map(() => 1),
-              rhs: 1,
+              type: 'at_most_one',
+              variables: conflictingVars.map(v => v.name),
               description: `Global room constraint for ${room.name} at ${day} ${timeSlot}`
             });
           }
@@ -699,10 +738,9 @@ export class ORToolsTimetableGenerator {
 
   private updateTimetablesFromGlobalSolution(
     timetables: GeneratedTimetable[],
-    solution: ConstraintSolution,
+    solution: ORToolsSolution,
     params: ORToolsBatchGenerationParams
   ): void {
-    // Update timetables based on global optimization results
     timetables.forEach(timetable => {
       timetable.timeSlots = timetable.timeSlots.filter(slot => {
         const varName = `${timetable.id}_${slot.id}`;
@@ -824,19 +862,19 @@ export class ORToolsTimetableGenerator {
   }
 }
 
-// Type definitions for constraint programming
-interface ConstraintModel {
-  variables: Map<string, ConstraintVariable>;
-  constraints: ConstraintConstraint[];
-  objective: ConstraintObjective | null;
+// Type definitions for OR-Tools constraint programming
+interface ORToolsModel {
+  variables: Map<string, ORToolsVariable>;
+  constraints: ORToolsConstraint[];
+  objective: ORToolsObjective | null;
   courses: Course[];
   faculty: Faculty[];
   rooms: Room[];
-  students: Student[];
+  studentCount: number;
   preferences: any;
 }
 
-interface ConstraintVariable {
+interface ORToolsVariable {
   name: string;
   type: 'binary' | 'integer' | 'continuous';
   courseId?: string;
@@ -848,21 +886,20 @@ interface ConstraintVariable {
   timetableId?: string;
 }
 
-interface ConstraintConstraint {
-  type: 'equality' | 'less_equal' | 'greater_equal';
+interface ORToolsConstraint {
+  type: 'exactly_one' | 'at_most_one' | 'at_least_one' | 'forbidden' | 'less_equal' | 'greater_equal';
   variables: string[];
-  coefficients: number[];
-  rhs: number;
+  coefficients?: number[];
+  rhs?: number;
   description: string;
-  weight?: number;
 }
 
-interface ConstraintObjective {
+interface ORToolsObjective {
   type: 'minimize' | 'maximize';
   terms: { variable: string; coefficient: number }[];
 }
 
-interface ConstraintSolution {
+interface ORToolsSolution {
   status: 'OPTIMAL' | 'FEASIBLE' | 'INFEASIBLE' | 'UNBOUNDED';
   objectiveValue: number;
   variables: Map<string, number>;

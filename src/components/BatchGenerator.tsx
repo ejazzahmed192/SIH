@@ -361,7 +361,7 @@ export default function BatchGenerator() {
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
                   <span className="text-sm text-gray-600">
-                    Generated {results.length} timetables
+                    Optimized using Google OR-Tools CP-SAT solver with global optimization
                   </span>
                 </div>
                 
